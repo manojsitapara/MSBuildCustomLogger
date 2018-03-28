@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Build.Framework;
@@ -19,11 +21,49 @@ namespace CXC.CustomLogger
         public string CopyBuildFilesToDeploymentDirTarget = string.Empty;
         public string CopyDbDeployOutputFilesToDeploymentDirTarget = string.Empty;
         public List<string> SqlFileList = new List<string>();
+        public string CurrentTargetName = string.Empty;
         public List<string> ListOfBuildFiles = new List<string>();
         private static readonly string STR_START_CHANGE_SCRIPT = "-- START CHANGE SCRIPT";
+        Options options = new Options();
+
+        class Options
+        {
+            public string FromEmailAddress = string.Empty;
+            public string ToEmailAddress = string.Empty;
+        }
+
+
+        void ParseParameters()
+        {
+            if (Parameters == null)
+            {
+                throw new ArgumentException("Parameters is null");
+            };
+
+            string[] parameters = Parameters.Split(';');
+
+            foreach (string parameter in parameters)
+            {
+                if (parameter.ToUpper().StartsWith("FROMEMAILADDRESS"))
+                {
+                    int index = parameter.IndexOf('=');
+                    options.FromEmailAddress = parameter.Substring(index + 1).Trim('"').Trim();
+                }
+                else if (parameter.ToUpper().StartsWith("TOEMAILADDRESS"))
+                {
+                    int index = parameter.IndexOf('=');
+                    options.ToEmailAddress = parameter.Substring(index + 1).Trim('"').Trim();
+                }
+                else 
+                {
+                    throw new ArgumentException(Parameters + "UnrecognizedParameter", parameter);
+                }
+            }
+        }
 
         public override void Initialize(IEventSource eventSource)
         {
+            ParseParameters();
             eventSource.BuildStarted += new BuildStartedEventHandler(eventSource_BuildStarted);
             eventSource.WarningRaised += new BuildWarningEventHandler(eventSource_WarningRaised);
             eventSource.ErrorRaised += new BuildErrorEventHandler(eventSource_ErrorRaised);
@@ -36,8 +76,8 @@ namespace CXC.CustomLogger
 
         private void eventSource_BuildStarted(Object sender, BuildStartedEventArgs e)
         {
-            _readMeFile = new FileInfo("../Log/Readme" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
-            _logFile = new FileInfo("../Log/MSBuild" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
+            _readMeFile = new FileInfo("../Log/Readme_" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
+            _logFile = new FileInfo("../Log/MSBuild_" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
             if (_readMeFile.Exists)
             {
                 _readMeFile.Delete();
@@ -69,10 +109,10 @@ namespace CXC.CustomLogger
 
         private void eventSource_ErrorRaised(Object sender, BuildErrorEventArgs e)
         {
-            //Console.WriteLine("Error at: " + e.LineNumber + "," + e.ColumnNumber + " - " + e.Message);
             using (var stream = new StreamWriter(_logFile.FullName, true))
             {
                 stream.WriteLine("Error at: " + e.LineNumber + "," + e.ColumnNumber + " - " + e.Message);
+                LaunchCommandLineApp("Build Failed for Target " + CurrentTargetName ,  e.Message);
             }
         }
 
@@ -136,15 +176,9 @@ namespace CXC.CustomLogger
                             //CXCCore_SchemaChanges / 1.Ticket_29434.sql
                             SqlFileList.Add(finalSqlFileName);
                         }
-
-
-
                     }
                 }
-
             }
-
-
         }
 
 
@@ -160,6 +194,7 @@ namespace CXC.CustomLogger
             {
                 CopyDbDeployOutputFilesToDeploymentDirTarget = e.TargetName;
             }
+            CurrentTargetName = e.TargetName;
 
 
         }
@@ -221,6 +256,33 @@ namespace CXC.CustomLogger
         private void eventSource_BuildFinished(object sender, BuildFinishedEventArgs e)
         {
             //Console.WriteLine("Result: " + e.Message);
+        }
+
+
+        private void LaunchCommandLineApp(string subject, string message)
+        {
+            string currentDir = Path.GetDirectoryName(Environment.CurrentDirectory);
+
+            Console.WriteLine(currentDir);
+            ProcessStartInfo startInfo = new ProcessStartInfo();
+            startInfo.CreateNoWindow = true;
+            startInfo.UseShellExecute = false;
+            startInfo.FileName = currentDir + "\\lib\\sendemail.exe";
+            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            startInfo.Arguments = "GET THIS INFORMATION FROM SEPERATE NOTEPAD FILE";
+
+            try
+            {
+                using (Process exeProcess = Process.Start(startInfo))
+                {
+                    exeProcess.WaitForExit();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                throw ex;
+            }
         }
     }
 }
