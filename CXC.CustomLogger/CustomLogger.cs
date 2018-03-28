@@ -269,7 +269,7 @@ namespace CXC.CustomLogger
             startInfo.UseShellExecute = false;
             startInfo.FileName = currentDir + "\\lib\\sendemail.exe";
             startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            startInfo.Arguments = "GET THIS INFORMATION FROM SEPERATE NOTEPAD FILE";
+            startInfo.Arguments = "-f "+ options.FromEmailAddress + " -t "+ options.ToEmailAddress + " -u "+ subject  + " -m "+ message + " See log file for additional details...  -s SERVERNAME:PORT -xu USERNAME -xp PASSWORD -o tls=yes";
 
             try
             {
