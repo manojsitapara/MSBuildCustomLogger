@@ -30,6 +30,7 @@ namespace CXC.CustomLogger
         {
             public string FromEmailAddress = string.Empty;
             public string ToEmailAddress = string.Empty;
+            public bool SendErrorEmail = true;
         }
 
 
@@ -54,7 +55,12 @@ namespace CXC.CustomLogger
                     int index = parameter.IndexOf('=');
                     options.ToEmailAddress = parameter.Substring(index + 1).Trim('"').Trim();
                 }
-                else 
+                else if (parameter.ToUpper().StartsWith("SENDERROREMAIL"))
+                {
+                    int index = parameter.IndexOf('=');
+                    options.SendErrorEmail = Convert.ToBoolean(parameter.Substring(index + 1).Trim('"').Trim());
+                }
+                else
                 {
                     throw new ArgumentException(Parameters + "UnrecognizedParameter", parameter);
                 }
@@ -76,8 +82,8 @@ namespace CXC.CustomLogger
 
         private void eventSource_BuildStarted(Object sender, BuildStartedEventArgs e)
         {
-            _readMeFile = new FileInfo("../Log/Readme_" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
-            _logFile = new FileInfo("../Log/MSBuild_" + DateTime.Now.ToString("MMddyy_HHmmss") + ".txt");
+            _readMeFile = new FileInfo("../Log/Readme_" + DateTime.Now.ToString("MMddyyyy_HHmmss") + ".txt");
+            _logFile = new FileInfo("../Log/MSBuild_" + DateTime.Now.ToString("MMddyyyy_HHmmss") + ".txt");
             if (_readMeFile.Exists)
             {
                 _readMeFile.Delete();
@@ -112,7 +118,12 @@ namespace CXC.CustomLogger
             using (var stream = new StreamWriter(_logFile.FullName, true))
             {
                 stream.WriteLine("Error at: " + e.LineNumber + "," + e.ColumnNumber + " - " + e.Message);
-                LaunchCommandLineApp("Build Failed for Target " + CurrentTargetName ,  e.Message);
+                if (options.SendErrorEmail)
+                {
+                    LaunchCommandLineApp("Build Failed for Target " + CurrentTargetName, e.Message);
+                }
+                
+
             }
         }
 
@@ -184,6 +195,10 @@ namespace CXC.CustomLogger
 
         private void eventSource_TargetStarted(Object sender, TargetStartedEventArgs e)
         {
+            using (var stream = new StreamWriter(_logFile.FullName, true))
+            {
+                stream.WriteLine("Target " + e.TargetName + " has been started");
+            }
 
             if (String.Equals(e.TargetName, "CopyBuildFilesToDeploymentDir", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -201,7 +216,10 @@ namespace CXC.CustomLogger
 
         private void eventSource_TargetEnded(object sender, TargetFinishedEventArgs e)
         {
-
+            using (var stream = new StreamWriter(_logFile.FullName, true))
+            {
+                stream.WriteLine("Target " + e.TargetName + " has been completed");
+            }
             if (String.Equals(e.TargetName, "CopyBuildFilesToDeploymentDir", StringComparison.CurrentCultureIgnoreCase))
             {
                 var ordered = ListOfBuildFiles.OrderBy(p => Path.GetExtension(p));
@@ -238,7 +256,7 @@ namespace CXC.CustomLogger
                         stream.WriteLine(Environment.NewLine);
                         stream.WriteLine("Following .sql has been copied");
                     }
-                    
+
                 }
                 foreach (var sqlFileName in SqlFileList)
                 {
@@ -269,7 +287,7 @@ namespace CXC.CustomLogger
             startInfo.UseShellExecute = false;
             startInfo.FileName = currentDir + "\\lib\\sendemail.exe";
             startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            startInfo.Arguments = "-f "+ options.FromEmailAddress + " -t "+ options.ToEmailAddress + " -u "+ subject  + " -m "+ message + " See log file for additional details...  -s SERVERNAME:PORT -xu USERNAME -xp PASSWORD -o tls=yes";
+            startInfo.Arguments = "-f " + options.FromEmailAddress + " -t " + options.ToEmailAddress + " -u " + subject + " -m " + message + " See log file for additional details...  -s SERVERNAME:PORT -xu USERNAME -xp PASSWORD -o tls=yes";
 
             try
             {
